@@ -1,0 +1,65 @@
+## Simulating an experiment to measure the effectiveness of case management on recovery outcomes
+
+library(tidyverse)
+library(ggplot2)
+library(survival)
+library(truncnorm)
+library(survminer)
+library(ggpubr)
+
+set.seed(123)  # set seed to make the simulation reproducible
+n <- 5000
+
+#create treatment variable
+treatment <- rep(c(0, 1), n/2)
+
+#create age variable
+age <- round(rnorm(n, mean = 40, sd = 15))
+
+#create injseverity variable
+
+injseverity <- round(rtruncnorm(n = n, a = 1, b = 10, mean = 4, sd = 2))
+
+
+#create injlocation variable
+injtype <- sample(c("Fracture","Sprain","Concussion","Other"), n, replace = TRUE)
+
+#create ableselfman variable
+self_manage <- sample(1:5, n, replace = TRUE)
+
+#create dataframe
+injurydata <- data.frame(treatment, age, injseverity, injtype, self_manage)
+
+View(injurydata)
+
+
+#create recoverytime variable
+
+injurydata$ageadj <- ifelse(injurydata$age >= 25, 0.5 * (injurydata$age - 25),0)
+injurydata$injtypeadj <- ifelse(injurydata$injtype=="Concussion", 10, ifelse(injurydata$injtype=="Sprain",5,0))
+injurydata$selfmanadj <- injurydata$injseverity * (5-injurydata$self_manage) - injurydata$injseverity * (5-injurydata$self_manage)*injurydata$treatment
+
+injurydata$recovery_time <- rnorm(n, mean = 12 + 0.5*injurydata$injseverity*(injurydata$ageadj + injurydata$injtypeadj + injurydata$selfmanadj), sd = 15)
+injurydata$recovery_time <- round(injurydata$recovery_time)
+
+
+View(injurydata)
+summary(injurydata)                               
+
+
+## I'd like to estimate the effect of treatment on recoverytime. 
+## I'm trying to predict a 'time-to-event' variable so I'm going to use a survival model - cox proportional hazard model
+##Note that the effect should come through the ableselfman variable so I have used an interaction to identify the effect. 
+
+# create survival object
+surv_obj <- Surv(injurydata$recovery_time, injurydata$treatment)
+
+
+# fit the cox model
+
+model <- coxph(Surv(recovery_time) ~ treatment + treatment*self_manage + self_manage + age + injseverity + injtype , data = injurydata)
+
+injurydata$survive <- survfit(model, injurydata)
+
+# print the summary of the model
+summary(model)
